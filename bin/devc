@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# devc: リポジトリの devcontainer を起動し、Claude デスクトップアプリから SSH で接続できるようにする
+set -euo pipefail
+
+KEY="$HOME/.ssh/devc_ed25519"
+CONF_DIR="$HOME/.ssh/devc"
+REMOTE_USER=vscode
+SSH_PORT=2222
+# GitHub のトークン（エージェント用の fine-grained PAT）を保存するキーチェーンの項目名
+TOKEN_SERVICE=devc-github
+
+usage() {
+  cat <<EOF
+使い方: devc <コマンド> [リポジトリのパス]
+
+  up        devcontainer を起動し、SSH の接続先 devc-<リポジトリ名> を作る
+  rebuild   コンテナを作り直して起動する（認証情報の volume は残る）
+  down      devcontainer を停止する
+  ssh       SSH でコンテナに入り、リポジトリのディレクトリに移動する
+  rc        コンテナ内の tmux で Remote Control のサーバーを起動する（スマホから操作する用）
+  gh-login  GitHub のトークンをコンテナの gh に登録し直す（標準入力があればそれを使う）
+  token-set GitHub のトークンを macOS のキーチェーンに保存する
+  ls        起動中の devcontainer を一覧する
+
+リポジトリのパスを省略すると、カレントディレクトリの git リポジトリを使う
+
+up と rebuild は、コンテナの gh が未ログインかトークンが無効なら、保存済みのトークンで自動登録する。
+キーチェーン以外から取り出すときは、トークンを標準出力に出すコマンドを DEVC_GH_TOKEN_CMD に設定する
+（例: DEVC_GH_TOKEN_CMD='op read op://Private/devc-github/token'）
+EOF
+}
+
+die() {
+  echo "devc: $*" >&2
+  exit 1
+}
+
+repo_dir() {
+  local dir="${1:-.}"
+  [ -d "$dir" ] || die "ディレクトリがありません: $dir"
+  (cd "$dir" && git rev-parse --show-toplevel 2>/dev/null || pwd -P)
+}
+
+host_alias() {
+  printf 'devc-%s' "$(printf '%s' "$(basename "$1")" | tr -c 'A-Za-z0-9._-' '-')"
+}
+
+container_id() {
+  docker ps -q --filter "label=devcontainer.local_folder=$1" | head -n 1
+}
+
+require_container() {
+  local cid
+  cid="$(container_id "$1")"
+  [ -n "$cid" ] || die "起動中の devcontainer がありません。先に devc up を実行してください: $1"
+  echo "$cid"
+}
+
+ensure_ssh_setup() {
+  [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N '' -C devc -f "$KEY"
+  mkdir -p "$CONF_DIR"
+  chmod 700 "$CONF_DIR"
+  if ! grep -qs 'devc/\*\.conf' "$HOME/.ssh/config"; then
+    echo "devc: ~/.ssh/config の先頭に次の1行を追加してください" >&2
+    echo "  Include ~/.ssh/devc/*.conf" >&2
+  fi
+}
+
+# 保存済みのトークンを標準出力に出す。見つからなければ何も出さない
+stored_token() {
+  if [ -n "${DEVC_GH_TOKEN_CMD:-}" ]; then
+    sh -c "$DEVC_GH_TOKEN_CMD"
+  elif command -v security > /dev/null; then
+    security find-generic-password -s "$TOKEN_SERVICE" -w 2> /dev/null || true
+  fi
+}
+
+# 標準入力のトークンをコンテナの gh に登録する。
+# git の認証に gh を使う設定はイメージ側（/etc/gitconfig）にあるので、ここではトークンの登録だけ行う
+gh_login() {
+  docker exec -i -u "$REMOTE_USER" "$1" gh auth login --hostname github.com --git-protocol https --with-token
+}
+
+ensure_gh_login() {
+  local cid="$1" token
+  # gh auth status は GitHub に問い合わせるので、期限切れや取り消し済みのトークンも検出できる
+  docker exec -u "$REMOTE_USER" "$cid" gh auth status --hostname github.com > /dev/null 2>&1 && return 0
+  token="$(stored_token)"
+  if [ -z "$token" ]; then
+    echo "devc: GitHub のトークンが未登録です。devc token-set で保存すると、次回の up から自動で登録します" >&2
+    return 0
+  fi
+  if printf '%s\n' "$token" | gh_login "$cid"; then
+    echo "GitHub のトークンを登録しました"
+  else
+    echo "devc: GitHub のトークンを登録できませんでした。期限切れなら新しいトークンを devc token-set で保存してください" >&2
+  fi
+}
+
+cmd_up() {
+  local dir alias cid port
+  dir="$(repo_dir "${1:-}")"
+  alias="$(host_alias "$dir")"
+  ensure_ssh_setup
+
+  devcontainer up --workspace-folder "$dir" ${UP_ARGS[@]+"${UP_ARGS[@]}"} > /dev/null
+  cid="$(require_container "$dir")"
+
+  # devcontainer up は Feature の entrypoint（ファイアウォール設定と sshd 起動）の完了を待たずに戻る
+  local i
+  for i in $(seq 1 60); do
+    docker exec "$cid" test -f /run/sshd.pid 2> /dev/null && break
+    [ "$i" = 60 ] && die "sshd が起動しません（docker exec $cid cat /var/log/agent-ssh.log /var/log/agent-sandbox.log を確認してください）"
+    sleep 1
+  done
+
+  docker exec -i -u "$REMOTE_USER" "$cid" sh -c \
+    'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' \
+    < "$KEY.pub"
+
+  # コミットの作者はホストの git 設定に合わせる（コンテナの ~/.gitconfig は作り直すと消えるため毎回書く）
+  local key value
+  for key in user.name user.email; do
+    value="$(git -C "$dir" config --get "$key" || true)"
+    [ -n "$value" ] && docker exec -u "$REMOTE_USER" "$cid" git config --global "$key" "$value"
+  done
+
+  port="$(docker port "$cid" "$SSH_PORT/tcp" | awk -F: 'NR == 1 { print $NF }')"
+  [ -n "$port" ] || die "コンテナの $SSH_PORT 番がホストに公開されていません（devcontainer.json の runArgs を確認してください）"
+
+  cat > "$CONF_DIR/$alias.conf" <<EOF
+# devc が生成（${dir}）
+Host $alias
+  HostName 127.0.0.1
+  Port $port
+  User $REMOTE_USER
+  IdentityFile $KEY
+  IdentitiesOnly yes
+  ForwardAgent no
+  HostKeyAlias $alias
+  UserKnownHostsFile $CONF_DIR/known_hosts
+  StrictHostKeyChecking accept-new
+EOF
+  # コンテナを作り直すとホスト鍵が変わるため、古い記録を消す
+  ssh-keygen -R "$alias" -f "$CONF_DIR/known_hosts" > /dev/null 2>&1 || true
+
+  ensure_gh_login "$cid"
+
+  echo "SSH の接続先: ${alias}（127.0.0.1:${port}）"
+  echo "プロジェクトのパス: $dir"
+}
+
+cmd_down() {
+  local dir
+  dir="$(repo_dir "${1:-}")"
+  docker stop "$(require_container "$dir")" > /dev/null
+  echo "停止しました: $dir"
+}
+
+cmd_ssh() {
+  local dir
+  dir="$(repo_dir "${1:-}")"
+  exec ssh -t "$(host_alias "$dir")" "cd $(printf '%q' "$dir") && exec \$SHELL -l"
+}
+
+cmd_rc() {
+  local dir name
+  dir="$(repo_dir "${1:-}")"
+  name="$(basename "$dir")"
+  git -C "$dir" rev-parse -q --verify HEAD > /dev/null \
+    || die "コミットがありません。セッションごとに worktree を作るには、コミットが1つ以上必要です: $dir"
+  # 既に起動していればそのセッションに入る。抜けるときは Ctrl-b d（サーバーは動き続ける）
+  exec ssh -t "$(host_alias "$dir")" \
+    "tmux new-session -A -s devc-rc -c $(printf '%q' "$dir") \
+      'claude remote-control --spawn worktree --permission-mode bypassPermissions --remote-control-session-name-prefix $(printf '%q' "$name")'"
+}
+
+cmd_gh_login() {
+  local dir cid token
+  dir="$(repo_dir "${1:-}")"
+  cid="$(require_container "$dir")"
+  if [ -t 0 ]; then
+    token="$(stored_token)"
+    if [ -n "$token" ]; then
+      printf '%s\n' "$token" | gh_login "$cid"
+    else
+      echo "GitHub のトークンを貼り付けて Ctrl-D を押してください" >&2
+      gh_login "$cid"
+    fi
+  else
+    gh_login "$cid"
+  fi
+  docker exec -u "$REMOTE_USER" "$cid" gh auth status
+}
+
+cmd_token_set() {
+  command -v security > /dev/null \
+    || die "macOS 以外では、トークンを出力するコマンドを DEVC_GH_TOKEN_CMD に設定してください"
+  echo "GitHub のトークンを入力してください（入力は表示されません。確認のため2回聞かれます）" >&2
+  # -w を最後に置くと対話入力になり、トークンがコマンド履歴やプロセス一覧に残らない
+  security add-generic-password -U -s "$TOKEN_SERVICE" -a "$USER" -l "devc GitHub token" -w
+  echo "保存しました。起動中のコンテナに反映するには devc gh-login を実行してください"
+}
+
+cmd_ls() {
+  docker ps --filter label=devcontainer.local_folder \
+    --format 'table {{.ID}}\t{{.Label "devcontainer.local_folder"}}\t{{.Ports}}'
+}
+
+UP_ARGS=()
+case "${1:-}" in
+  up) shift; cmd_up "$@" ;;
+  rebuild) shift; UP_ARGS=(--remove-existing-container); cmd_up "$@" ;;
+  down) shift; cmd_down "$@" ;;
+  ssh) shift; cmd_ssh "$@" ;;
+  rc) shift; cmd_rc "$@" ;;
+  gh-login) shift; cmd_gh_login "$@" ;;
+  token-set) cmd_token_set ;;
+  ls) cmd_ls ;;
+  -h | --help | help | "") usage ;;
+  *) usage >&2; exit 1 ;;
+esac

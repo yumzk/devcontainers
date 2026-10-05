@@ -1,0 +1,21 @@
+{
+  "id": "agent-sandbox",
+  "version": "0.1.0",
+  "name": "Agent sandbox",
+  "description": "remoteUser の sudo を外し、外向き通信を許可したドメイン（とそのサブドメイン）だけに絞る",
+  "options": {
+    "extraDomains": {
+      "type": "string",
+      "default": "",
+      "description": "追加で許可するドメイン（カンマ区切り。サブドメインも許可される）"
+    }
+  },
+  "capAdd": [
+    "NET_ADMIN",
+    "NET_RAW"
+  ],
+  "entrypoint": "/usr/local/share/agent-sandbox/entrypoint.sh",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

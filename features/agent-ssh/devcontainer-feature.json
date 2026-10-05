@@ -1,0 +1,10 @@
+{
+  "id": "agent-ssh",
+  "version": "0.1.0",
+  "name": "SSH server for agent sessions",
+  "description": "公開鍵認証のみの sshd をコンテナ内の 2222 番で起動する（Claude デスクトップアプリの SSH セッション用）",
+  "entrypoint": "/usr/local/share/agent-ssh/entrypoint.sh",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

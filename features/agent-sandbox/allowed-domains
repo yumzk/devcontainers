@@ -1,0 +1,15 @@
+# 全イメージ共通で許可するドメイン。サブドメインも許可される
+# 言語ごとのレジストリなどは、イメージ側で extraDomains として足す
+
+# Claude Code（API、ログイン、ネイティブインストーラと自動更新、Remote Control）
+anthropic.com
+claude.ai
+claude.com
+
+# Codex（ChatGPT アカウントでのログインと API）
+openai.com
+chatgpt.com
+
+# GitHub（git、gh、Releases からのダウンロード）
+github.com
+githubusercontent.com

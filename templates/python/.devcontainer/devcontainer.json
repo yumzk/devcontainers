@@ -1,0 +1,9 @@
+{
+  "name": "${localWorkspaceFolderBasename}",
+  "image": "ghcr.io/yumzk/devcontainers/python:dev",
+  // ホストと同じパスにマウントし、worktree の絶対パスをホストとコンテナで一致させる
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+  // デスクトップアプリの SSH セッション用。ホスト側は 127.0.0.1 の空きポートに割り当てる
+  "runArgs": ["--publish", "127.0.0.1::2222"]
+}

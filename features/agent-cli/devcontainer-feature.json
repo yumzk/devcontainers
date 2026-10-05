@@ -1,0 +1,38 @@
+{
+  "id": "agent-cli",
+  "version": "0.1.0",
+  "name": "Coding agent CLIs",
+  "description": "Claude Code と Codex をインストールし、各認証情報を devcontainer ごとの volume に保存する",
+  "options": {
+    "codexVersion": {
+      "type": "string",
+      "default": "latest",
+      "description": "Codex のリリースタグ（例: rust-v0.160.0）。latest で最新"
+    }
+  },
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "CODEX_HOME": "/home/vscode/.codex"
+  },
+  "mounts": [
+    {
+      "source": "claude-config-${devcontainerId}",
+      "target": "/home/vscode/.claude",
+      "type": "volume"
+    },
+    {
+      "source": "codex-home-${devcontainerId}",
+      "target": "/home/vscode/.codex",
+      "type": "volume"
+    },
+    {
+      "source": "gh-config-${devcontainerId}",
+      "target": "/home/vscode/.config/gh",
+      "type": "volume"
+    }
+  ],
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/github-cli"
+  ]
+}
