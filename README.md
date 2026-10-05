@@ -13,9 +13,10 @@ features/
   agent-ssh/       公開鍵認証のみの sshd（コンテナ内 2222 番）
   agent-sandbox/   sudo の削除と、外向き通信の許可リスト化（dnsmasq + ipset + iptables）
 images/
-  python/          言語別イメージの定義
+  python/          言語別イメージの定義（Python 本体は各リポジトリで uv が管理）
+  go/              言語別イメージの定義（Go 本体はイメージのものを使う）
 templates/
-  python/          各リポジトリに置く devcontainer.json の雛形
+  python/ go/      各リポジトリに置く devcontainer.json の雛形
 scripts/
   build-image.sh   言語別イメージのビルド
 bin/
@@ -54,6 +55,17 @@ PR ではビルドとスモークテストだけを行い、公開はしない�
 - Docker（Docker Desktop など）
 - devcontainer CLI（`npm install -g @devcontainers/cli`）
 - `~/.ssh/config` の先頭に `Include ~/.ssh/devc/*.conf`
+
+## 言語ごとの方針
+
+| 言語 | 本体のバージョン | プロジェクト固有のツール | 追加で許可するドメイン |
+|---|---|---|---|
+| Python | 各リポジトリの `.python-version` を uv が取得 | `pyproject.toml` と `uv.lock` | pypi.org、pythonhosted.org |
+| Go | イメージの Go（最新のマイナーに追従） | `go.mod` の tool ディレクティブ（`go tool <名前>` で実行） | golang.org |
+
+Go は `GOTOOLCHAIN=local` のまま使う。Go 本体の自動取得は storage.googleapis.com へのリダイレクトを伴い、
+そこを許可すると任意のバケットへの通信経路が開くため。`go.mod` がイメージより新しい Go を要求すると
+「go.mod requires go >= ...」で止まるので、そのときはイメージの更新を待つか、イメージの Go を上げる。
 
 ## GitHub のトークン
 

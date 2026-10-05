@@ -1,0 +1,16 @@
+{
+  // scripts/build-image.sh がこのディレクトリと features/ を .devcontainer/ に並べてビルドする
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "./features/agent-cli": {},
+    "./features/agent-ssh": {},
+    "./features/agent-sandbox": {
+      // proxy.golang.org（モジュールと Go 本体の取得）と sum.golang.org（チェックサムの検証）
+      "extraDomains": "golang.org"
+    }
+  },
+  "remoteUser": "vscode"
+}
