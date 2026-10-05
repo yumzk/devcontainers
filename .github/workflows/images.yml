@@ -39,12 +39,19 @@ jobs:
         platform:
           - { arch: amd64, runner: ubuntu-24.04 }
           - { arch: arm64, runner: ubuntu-24.04-arm }
+        # 言語ごとのスモークテスト
+        include:
+          - image: python
+            check: python3 --version && uv --version
+          - image: go
+            check: go version && gopls version
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
       packages: write
     env:
       TAG: ghcr.io/${{ github.repository }}/images/${{ matrix.image }}:build-${{ github.sha }}-${{ matrix.platform.arch }}
+      CHECK: ${{ matrix.check }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,7 +65,7 @@ jobs:
       - name: Smoke test
         run: |
           docker run --rm --user vscode "$TAG" bash -lc \
-            'claude --version && codex --version && gh --version && git --version && uv --version'
+            "claude --version && codex --version && gh --version && git --version && $CHECK"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: github.event_name != 'pull_request'
