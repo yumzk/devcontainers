@@ -116,7 +116,7 @@ sync_dotfiles() {
   # ユーザー単位の設定として読まれるのは settings.json だけなので、ほかのファイルはそのままコピーする。
   # 壊れた settings.json をコピーしないよう、何もコピーしないうちに変換しておく
   if [ -f "$src/settings.json" ]; then
-    command -v jq > /dev/null || die "settings.json の変換に jq が必要です（brew install jq）"
+    command -v jq > /dev/null || die "settings.json の変換に jq が必要です"
     settings="$(jq -e -s 'select(length == 1 and (.[0] | type) == "object") | .[0] | del(.permissions.ask)' \
       "$src/settings.json")" \
       || die "settings.json が JSON のオブジェクトとして読めません（$src/settings.json）"

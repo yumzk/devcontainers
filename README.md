@@ -57,7 +57,6 @@ PR ではビルドとスモークテストだけを行い、公開はしない�
 
 - Docker（Docker Desktop など）
 - devcontainer CLI（`npm install -g @devcontainers/cli`）
-- jq（`brew install jq`）
 - `~/.ssh/config` の先頭に `Include ~/.ssh/devc/*.conf`
 
 ## 言語ごとの方針
