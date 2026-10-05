@@ -50,7 +50,8 @@ PR ではビルドとスモークテストだけを行い、公開はしない�
 - ホストの `~/.ssh`、gh の設定、docker.sock は渡さない
 - GitHub へは、エージェント用のトークンの権限の範囲で push と PR 作成ができる
 - Claude Code の設定と skill は、dotfiles の `claude/` が `devc up` のたびにコピーされる
-  （dotfiles の場所は `DEVC_DOTFILES`、既定は `~/go/src/github.com/yumzk/dotfiles`）
+  （dotfiles の場所は `DEVC_DOTFILES`、既定は `~/go/src/github.com/yumzk/dotfiles`）。
+  `settings.json` の `permissions.ask` は取り除く（bypass permissions でも確認が出て、放置したセッションが止まるため）
 
 ## 前提
 
