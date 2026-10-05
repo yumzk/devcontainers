@@ -31,6 +31,7 @@ up と rebuild は、コンテナの gh が未ログインかトークンが無�
 （例: DEVC_GH_TOKEN_CMD='op read op://Private/devc-github/token'）
 
 up と rebuild は、dotfiles の claude/（settings.json、skills など）をコンテナの ~/.claude にコピーする。
+settings.json の permissions.ask は、bypass permissions でも確認が出て放置したセッションが止まるので取り除く。
 dotfiles の場所は DEVC_DOTFILES で変えられる（既定: ~/go/src/github.com/yumzk/dotfiles）
 EOF
 }
@@ -103,13 +104,19 @@ ensure_gh_login() {
 }
 
 # dotfiles の claude/ をコンテナの ~/.claude にコピーする。
-# コンテナ内で書き換えられていても、起動のたびに dotfiles の内容に戻す
+# コンテナ内で書き換えられていても、起動のたびに dotfiles の内容に戻す（settings.json の ask ルールは除く）
 sync_dotfiles() {
-  local cid="$1" src="$DOTFILES/claude" dir
+  local cid="$1" src="$DOTFILES/claude" dir settings=""
   local skills=()
   if [ ! -d "$src" ]; then
     echo "devc: dotfiles が見つからないため、Claude Code の設定はコピーしません（$src）" >&2
     return 0
+  fi
+  # ask ルールは bypass permissions でも確認を出し、放置したセッションが止まるので、コンテナでは取り除く。
+  # 壊れた settings.json をコピーしないよう、何もコピーしないうちに変換しておく
+  if [ -f "$src/settings.json" ]; then
+    settings="$(jq 'del(.permissions.ask)' "$src/settings.json")" \
+      || die "settings.json を読めません（$src/settings.json）"
   fi
   for dir in "$src"/skills/*/; do
     [ -d "$dir" ] && skills+=("$(basename "$dir")")
@@ -118,6 +125,10 @@ sync_dotfiles() {
   COPYFILE_DISABLE=1 tar -C "$src" --no-xattrs --no-mac-metadata --exclude .DS_Store -cf - . \
     | docker exec -i -u "$REMOTE_USER" "$cid" sh -c \
       'cd ~/.claude && for s in "$@"; do rm -rf "skills/$s"; done && tar -xf -' sh ${skills[@]+"${skills[@]}"}
+  if [ -n "$settings" ]; then
+    printf '%s\n' "$settings" \
+      | docker exec -i -u "$REMOTE_USER" "$cid" sh -c 'cat > ~/.claude/settings.json'
+  fi
 }
 
 cmd_up() {
