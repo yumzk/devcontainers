@@ -8,6 +8,8 @@ REMOTE_USER=vscode
 SSH_PORT=2222
 # GitHub のトークン（エージェント用の fine-grained PAT）を保存するキーチェーンの項目名
 TOKEN_SERVICE=devc-github
+# Claude Code の設定（claude/）をコンテナにコピーする dotfiles の場所
+DOTFILES="${DEVC_DOTFILES:-$HOME/go/src/github.com/yumzk/dotfiles}"
 
 usage() {
   cat <<EOF
@@ -27,6 +29,9 @@ usage() {
 up と rebuild は、コンテナの gh が未ログインかトークンが無効なら、保存済みのトークンで自動登録する。
 キーチェーン以外から取り出すときは、トークンを標準出力に出すコマンドを DEVC_GH_TOKEN_CMD に設定する
 （例: DEVC_GH_TOKEN_CMD='op read op://Private/devc-github/token'）
+
+up と rebuild は、dotfiles の claude/（settings.json、skills など）をコンテナの ~/.claude にコピーする。
+dotfiles の場所は DEVC_DOTFILES で変えられる（既定: ~/go/src/github.com/yumzk/dotfiles）
 EOF
 }
 
@@ -97,6 +102,24 @@ ensure_gh_login() {
   fi
 }
 
+# dotfiles の claude/ をコンテナの ~/.claude にコピーする。
+# コンテナ内で書き換えられていても、起動のたびに dotfiles の内容に戻す
+sync_dotfiles() {
+  local cid="$1" src="$DOTFILES/claude" dir
+  local skills=()
+  if [ ! -d "$src" ]; then
+    echo "devc: dotfiles が見つからないため、Claude Code の設定はコピーしません（$src）" >&2
+    return 0
+  fi
+  for dir in "$src"/skills/*/; do
+    [ -d "$dir" ] && skills+=("$(basename "$dir")")
+  done
+  # skill はディレクトリごと入れ替え、dotfiles で消したファイルが残らないようにする
+  COPYFILE_DISABLE=1 tar -C "$src" --no-xattrs --no-mac-metadata --exclude .DS_Store -cf - . \
+    | docker exec -i -u "$REMOTE_USER" "$cid" sh -c \
+      'cd ~/.claude && for s in "$@"; do rm -rf "skills/$s"; done && tar -xf -' sh ${skills[@]+"${skills[@]}"}
+}
+
 cmd_up() {
   local dir alias cid port
   dir="$(repo_dir "${1:-}")"
@@ -152,6 +175,7 @@ EOF
   ssh-keygen -R "$alias" -f "$CONF_DIR/known_hosts" > /dev/null 2>&1 || true
 
   ensure_gh_login "$cid"
+  sync_dotfiles "$cid"
 
   echo "SSH の接続先: ${alias}（127.0.0.1:${port}）"
   echo "プロジェクトのパス: $dir"

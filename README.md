@@ -49,6 +49,8 @@ PR ではビルドとスモークテストだけを行い、公開はしない�
 - 外向き通信は `features/agent-sandbox/allowed-domains` と各イメージの `extraDomains` に書いたドメインだけ
 - ホストの `~/.ssh`、gh の設定、docker.sock は渡さない
 - GitHub へは、エージェント用のトークンの権限の範囲で push と PR 作成ができる
+- Claude Code の設定と skill は、dotfiles の `claude/` が `devc up` のたびにコピーされる
+  （dotfiles の場所は `DEVC_DOTFILES`、既定は `~/go/src/github.com/yumzk/dotfiles`）
 
 ## 前提
 
