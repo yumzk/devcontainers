@@ -1,6 +1,6 @@
 {
   "name": "${localWorkspaceFolderBasename}",
-  "image": "ghcr.io/yumzk/devcontainers/python:dev",
+  "image": "ghcr.io/yumzk/devcontainers/images/python:latest",
   // ホストと同じパスにマウントし、worktree の絶対パスをホストとコンテナで一致させる
   "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
   "workspaceFolder": "${localWorkspaceFolder}",

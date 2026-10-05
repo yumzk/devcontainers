@@ -103,6 +103,13 @@ cmd_up() {
   alias="$(host_alias "$dir")"
   ensure_ssh_setup
 
+  # devcontainer up は手元に同じタグのイメージがあると取得し直さないため、作り直すときは先に取得する
+  if [ "${#UP_ARGS[@]}" -gt 0 ]; then
+    local image
+    image="$(devcontainer read-configuration --workspace-folder "$dir" 2> /dev/null | jq -r '.configuration.image // empty')"
+    [ -n "$image" ] && { docker pull -q "$image" > /dev/null || echo "devc: $image を取得できませんでした。手元のイメージを使います" >&2; }
+  fi
+
   devcontainer up --workspace-folder "$dir" ${UP_ARGS[@]+"${UP_ARGS[@]}"} > /dev/null
   cid="$(require_container "$dir")"
 

@@ -3,7 +3,7 @@
 コーディングエージェント（Claude Code / Codex）を承認なしで動かすための devcontainer 一式。
 共通部分（Features と言語別イメージ）をここで管理し、各リポジトリには薄い `devcontainer.json` だけを置く。
 
-> 現在は PoC 段階。イメージはローカルでビルドし、ghcr.io への公開はまだ行っていない。
+イメージは `ghcr.io/yumzk/devcontainers/images/<言語>:latest` で公開している（amd64 と arm64）。
 
 ## 構成
 
@@ -20,7 +20,27 @@ scripts/
   build-image.sh   言語別イメージのビルド
 bin/
   devc             ホスト用ラッパー（起動、SSH 接続先の生成、gh へのトークン登録）
+.github/
+  workflows/images.yml  イメージのビルドと ghcr.io への公開
+  dependabot.yml        Actions とベースイメージの更新（公開から7日待つ）
 ```
+
+## イメージの公開
+
+`main` への push と毎週月曜 3:00（JST）に、GitHub Actions がイメージを作り直して公開する。
+PR ではビルドとスモークテストだけを行い、公開はしない。
+
+| タグ | 内容 |
+|---|---|
+| `latest` | 最新。各リポジトリの雛形はこれを参照する |
+| `sha-<コミット>` | コミットごとに固定。問題が出たときに戻す先 |
+| `build-<コミット>-<arch>` | アーキテクチャごとの中間イメージ |
+
+新しい言語のイメージを初めて公開したときは、ghcr のパッケージが private で作られるので、
+パッケージの Package settings → Change visibility で public にする。
+
+手元で作ったイメージを試すときは、`scripts/build-image.sh python ghcr.io/yumzk/devcontainers/images/python:latest`
+で同じタグに上書きする。`devc rebuild` は ghcr から取得し直すので、元に戻る。
 
 ## コンテナの中でできること・できないこと
 

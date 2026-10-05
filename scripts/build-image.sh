@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 使い方: scripts/build-image.sh <言語> [イメージ名]
+# イメージ名を省略すると ghcr.io/yumzk/devcontainers/images/<言語>:dev になる
 # ローカルの Feature は .devcontainer/ の下にある必要があるため、一時ディレクトリに並べてからビルドする
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 lang="${1:?使い方: scripts/build-image.sh <言語> [イメージ名]}"
-image="${2:-ghcr.io/yumzk/devcontainers/${lang}:dev}"
+image="${2:-ghcr.io/yumzk/devcontainers/images/${lang}:dev}"
 
 if [ ! -d "$root/images/$lang" ]; then
   echo "images/$lang がありません" >&2

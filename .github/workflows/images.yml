@@ -1,0 +1,102 @@
+name: images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "features/**"
+      - "images/**"
+      - "scripts/build-image.sh"
+      - ".github/workflows/images.yml"
+  pull_request:
+    paths:
+      - "features/**"
+      - "images/**"
+      - "scripts/build-image.sh"
+      - ".github/workflows/images.yml"
+  # 毎週月曜 3:00（JST）に作り直し、ベースイメージのセキュリティ更新とエージェント CLI の新バージョンを取り込む
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVCONTAINER_CLI_VERSION: 0.89.0
+
+jobs:
+  # アーキテクチャごとにネイティブのランナーでビルドする（QEMU を使わない）
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [python]
+        platform:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ghcr.io/${{ github.repository }}/images/${{ matrix.image }}:build-${{ github.sha }}-${{ matrix.platform.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: npm install -g "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
+
+      - name: Build
+        run: scripts/build-image.sh "${{ matrix.image }}" "$TAG"
+
+      - name: Smoke test
+        run: |
+          docker run --rm --user vscode "$TAG" bash -lc \
+            'claude --version && codex --version && gh --version && git --version && uv --version'
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        run: docker push "$TAG"
+
+  # アーキテクチャごとのイメージを1つのタグにまとめる
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        image: [python]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/images/${{ matrix.image }}
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Create multi-arch tags
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:sha-${GITHUB_SHA::7}" \
+            "$IMAGE:build-${GITHUB_SHA}-amd64" \
+            "$IMAGE:build-${GITHUB_SHA}-arm64"
+          docker buildx imagetools inspect "$IMAGE:latest"

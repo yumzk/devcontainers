@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # 公開直後のバージョンは避ける（乗っ取られたリリースが取り下げられるまでの猶予）
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: docker
+    directories:
+      - /images/*
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
