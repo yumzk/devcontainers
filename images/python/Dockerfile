@@ -1,5 +1,5 @@
 # Dependabot が更新できるように、uv は COPY --from に直接書かずステージとして参照する
-FROM ghcr.io/astral-sh/uv:0.12.23 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.4 AS uv
 
 FROM mcr.microsoft.com/devcontainers/python:3-trixie
 
