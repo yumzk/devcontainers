@@ -67,7 +67,7 @@ jobs:
           docker run --rm --user vscode "$TAG" bash -lc \
             "claude --version && codex --version && gh --version && git --version && $CHECK"
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
@@ -91,7 +91,7 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository }}/images/${{ matrix.image }}
     steps:
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
